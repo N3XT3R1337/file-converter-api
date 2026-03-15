@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+    volumes:
+      - uploads:/app/uploads
+      - outputs:/app/outputs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+    volumes:
+      - uploads:/app/uploads
+      - outputs:/app/outputs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    build: .
+    command: celery -A app.tasks beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+    volumes:
+      - uploads:/app/uploads
+      - outputs:/app/outputs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  uploads:
+  outputs:
